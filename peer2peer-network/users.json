@@ -1,0 +1,44 @@
+[
+    {
+        "id": 0,
+        "name": " James",
+        "pronouns": "he/him",
+        "phone_number": "555-555-5555",
+        "public": true
+    },
+    {
+        "id": 1,
+        "name": "Jill",
+        "pronouns": "she/her",
+        "phone_number": "555-555-5555",
+        "public": true
+    },
+    {
+        "id": 2,
+        "name": "Cameron",
+        "pronouns": "he/him",
+        "phone_number": "555-555-5555",
+        "public": true
+    },
+    {
+        "id": 3,
+        "name": "Justin",
+        "pronouns": "he/them",
+        "phone_number": "555-555-5555",
+        "public": true
+    },
+    {
+        "id": 4,
+        "name": " Wesley",
+        "pronouns": "he/him",
+        "phone_number": "555-555-5555",
+        "public": false
+    },
+    {
+        "id": 5,
+        "name": " Neil",
+        "pronouns": "they/them",
+        "phone_number": "555-555-5555",
+        "public": false
+    }
+]
