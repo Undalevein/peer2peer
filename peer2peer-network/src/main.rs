@@ -31,6 +31,9 @@ struct User {
     name: String,
     pronouns: String,
     phone_number: String,
+    about_me: Option<String>,
+    messages: Option<Vec<String>>,
+    messages_length: u32,
     public: bool,
 }
 
@@ -72,7 +75,7 @@ impl NetworkBehaviourEventProcess<FloodsubEvent> for UserBehaviour {
                 if let Ok(resp) = serde_json::from_slice::<ListResponse>(&msg.data) {
                     if resp.receiver == PEER_ID.to_string() {
                         info!("Response from {}:", msg.source);
-                        resp.data.iter().for_each(|r| info!("{:?}", r));
+                        resp.data.iter().for_each(|u| info!("{:?}", u));
                     }
                 } else if let Ok(req) = serde_json::from_slice::<ListRequest>(&msg.data) {
                     match req.mode {
@@ -107,7 +110,7 @@ fn respond_with_public_users(sender: mpsc::UnboundedSender<ListResponse>, receiv
                 let resp = ListResponse {
                     mode: ListMode::ALL,
                     receiver,
-                    data: users.into_iter().filter(|r| r.public).collect(),
+                    data: users.into_iter().filter(|u| u.public).collect(),
                 };
                 if let Err(e) = sender.send(resp) {
                     error!("error sending response via channel, {}", e);
@@ -139,7 +142,7 @@ impl NetworkBehaviourEventProcess<MdnsEvent> for UserBehaviour {
 
 async fn create_new_user(name: &str, pronouns: &str, phone_number: &str) -> Result<()> {
     let mut local_users = read_local_users().await?;
-    let new_id = match local_users.iter().max_by_key(|r| r.id) {
+    let new_id = match local_users.iter().max_by_key(|u| u.id) {
         Some(v) => v.id + 1,
         None => 0,
     };
@@ -148,14 +151,17 @@ async fn create_new_user(name: &str, pronouns: &str, phone_number: &str) -> Resu
         name: name.to_owned(),
         pronouns: pronouns.to_owned(),
         phone_number: phone_number.to_owned(),
+        about_me: Some("".to_string()),
+        messages: Some(Vec::new()),
+        messages_length: 0,
         public: false,
     });
     write_local_users(&local_users).await?;
 
     info!("Created user:");
     info!("Name: {}", name);
-    info!("Ingredients: {}", pronouns);
-    info!("Instructions:: {}", phone_number);
+    info!("Pronouns: {}", pronouns);
+    info!("Phone Number: {}", phone_number);
 
     Ok(())
 }
@@ -164,8 +170,45 @@ async fn publish_user(id: usize) -> Result<()> {
     let mut local_users = read_local_users().await?;
     local_users
         .iter_mut()
-        .filter(|r| r.id == id)
-        .for_each(|r| r.public = true);
+        .filter(|u| u.id == id)
+        .for_each(|u| u.public = true);
+    write_local_users(&local_users).await?;
+    Ok(())
+}
+
+async fn message_user(name: &str, message: &str) -> Result<()> {
+    let mut local_users = read_local_users().await?;
+    
+    for i in 0..local_users.len(){
+        if local_users[i].name == name {
+            if local_users[i].messages != None{
+                local_users[i].messages.clone().expect("REASON").push(message.to_string());
+            } else {
+                local_users[i].messages = vec![message];
+            }
+            local_users[i].messages_length += 1;
+            break;
+        }
+    } 
+    write_local_users(&local_users).await?;
+    Ok(())
+}
+
+async fn edit_user(id: usize, option_change: &str, replacement: &str) -> Result<()> {
+    let mut local_users = read_local_users().await?;
+    
+    for i in 0..local_users.len(){
+        if local_users[i].id == id {
+            if option_change == "name"{
+                local_users[i].name = replacement.to_string();
+            } else if option_change == "phone" {
+                local_users[i].phone_number = replacement.to_string();
+            } else if option_change == "about" {
+                local_users[i].about_me = Some(replacement.to_string());
+            }
+            break;
+        }
+    } 
     write_local_users(&local_users).await?;
     Ok(())
 }
@@ -248,9 +291,12 @@ async fn main() {
                 }
                 EventType::Input(line) => match line.as_str() {
                     "ls p" => handle_list_peers(&mut swarm).await,
-                    cmd if cmd.starts_with("ls r") => handle_list_users(cmd, &mut swarm).await,
-                    cmd if cmd.starts_with("create r") => handle_create_user(cmd).await,
-                    cmd if cmd.starts_with("publish r") => handle_publish_user(cmd).await,
+                    cmd if cmd.starts_with("ls u") => handle_list_users(cmd, &mut swarm).await,
+                    cmd if cmd.starts_with("create u") => handle_create_user(cmd).await,
+                    cmd if cmd.starts_with("publish u") => handle_publish_user(cmd).await,
+                    cmd if cmd.starts_with("message u") => handle_message_user(cmd).await,
+                    cmd if cmd.starts_with("edit u") => handle_edit_user(cmd).await,
+                    cmd if cmd.starts_with("help") => handle_help().await,
                     _ => error!("unknown command"),
                 },
             }
@@ -269,7 +315,7 @@ async fn handle_list_peers(swarm: &mut Swarm<UserBehaviour>) {
 }
 
 async fn handle_list_users(cmd: &str, swarm: &mut Swarm<UserBehaviour>) {
-    let rest = cmd.strip_prefix("ls r ");
+    let rest = cmd.strip_prefix("ls u ");
     match rest {
         Some("all") => {
             let req = ListRequest {
@@ -295,7 +341,7 @@ async fn handle_list_users(cmd: &str, swarm: &mut Swarm<UserBehaviour>) {
             match read_local_users().await {
                 Ok(v) => {
                     info!("Local Users ({})", v.len());
-                    v.iter().for_each(|r| info!("{:?}", r));
+                    v.iter().for_each(|u| info!("{:?}", u));
                 }
                 Err(e) => error!("error fetching local users: {}", e),
             };
@@ -304,7 +350,7 @@ async fn handle_list_users(cmd: &str, swarm: &mut Swarm<UserBehaviour>) {
 }
 
 async fn handle_create_user(cmd: &str) {
-    if let Some(rest) = cmd.strip_prefix("create r") {
+    if let Some(rest) = cmd.strip_prefix("create u") {
         let elements: Vec<&str> = rest.split("|").collect();
         if elements.len() < 3 {
             info!("too few arguments - Format: name|pronouns|phone_number");
@@ -320,7 +366,7 @@ async fn handle_create_user(cmd: &str) {
 }
 
 async fn handle_publish_user(cmd: &str) {
-    if let Some(rest) = cmd.strip_prefix("publish r") {
+    if let Some(rest) = cmd.strip_prefix("publish u") {
         match rest.trim().parse::<usize>() {
             Ok(id) => {
                 if let Err(e) = publish_user(id).await {
@@ -332,4 +378,65 @@ async fn handle_publish_user(cmd: &str) {
             Err(e) => error!("invalid id: {}, {}", rest.trim(), e),
         };
     }
+}
+
+async fn handle_message_user(cmd: &str) {
+    if let Some(rest) = cmd.strip_prefix("message u ") {
+        let elements: Vec<&str> = rest.split("|").collect();
+        if elements.len() < 2 {
+            info!("too few arguments - Format: message u name|message");
+        } else {
+            let name = elements.get(0).expect("name is there");
+            let message = elements.get(1).expect("message is there");
+            if let Err(e) = message_user(name, &message).await {
+                error!("user {} cannot be found: {}", name, e);
+            }
+        }
+    }
+}
+
+async fn handle_edit_user(cmd: &str) {
+    if let Some(rest) = cmd.strip_prefix("edit u "){
+        let elements: Vec<&str> = rest.split("|").collect();
+        if elements.len() < 3 {
+            info!("too few arguments - Format: edit u id|[name/phone/about]|[element]");
+        } else {
+            // Checks if id is a valid unsigned integer.
+            let id_string = elements.get(0).expect("id is there");
+            let mut id = 0;
+            match id_string.trim().parse::<usize>() {
+                Ok(id_number) => {
+                    id = id_number;
+                }
+                Err(e) => error!("invalid id: {}, {}", id_string.trim(), e),
+            };
+
+            // Checks if the option for what option to edit is valid.
+            let argument = elements.get(1).expect("type is there");
+            if argument != &"name" && argument != &"phone" && argument != &"about"{
+                error!("invalid argument: {} is not name, phone, or about", argument)
+            }
+            
+            // Gets the replacement
+            let replacement = elements.get(2).expect("replacement is there");
+
+
+            if let Err(e) = edit_user(id, &argument, &replacement).await {
+                error!("invalid id: {} cannot be found: {}", id, e)
+            }
+            
+        }
+    }
+}
+
+async fn handle_help() {
+    info!("ls p - list all peers");
+    info!("ls u - list local users");
+    info!("ls u all - list all public users from all known peers");
+    info!("ls u {{peerId}} - list all public users from the given peer");
+    info!("create u Name|Pronouns|Phone_Number - create a new user with the given data, the `|` are important as separators");
+    info!("publish u {{userId}} - publish user with the given user ID");
+    info!("message u Name|Message - message a user a message");
+    info!("edit u ID|[name/phone/about] - edit a user profile by editing the user's name, phone number, or about me");
+    info!("help - list the commands of the program");
 }
