@@ -1,6 +1,9 @@
-# Peer2Peer Exercise
+# Peer2Peer
 A peer-to-peer application that lists all of the users.
 
+## Authors
+Wesley Ng
+Reed Maniscalchi
 
 ## Usage
 Run with `RUST_LOG=info cargo run` in multiple terminals with each containing a `users.json` file, same, different, or newly fresh.
@@ -12,11 +15,13 @@ A `users.json` file must in the folder where it's executed, otherwise an error w
 Command List:
 
 * `ls p` - list all peers
-* `ls r` - list local users
-* `ls r all` - list all public users from all known peers
-* `ls r {peerId}` - list all public users from the given peer
-* `create r Name|Pronouns|Phone_Number` - create a new user with the given data, the `|` are important as separators
-* `publish r {userId}` - publish user with the given user ID
+* `ls u` - list local users
+* `ls u all` - list all public users from all known peers
+* `ls u {peerId}` - list all public users from the given peer
+* `create u Name|Pronouns|Phone_Number` - create a new user with the given data, the `|` are important as separators
+* `send u Name|Message` - send a user a message with with the specified name, the `|` spearates the name and message
+* `edit u id|[name,phone,about]|[replacement]` - edits the user profile of an individual based on their id, the `|` separates the id, what attribute to edit, and its replacement
+* `publish u {userId}` - publish user with the given user ID
 
 ## Proposal
 
