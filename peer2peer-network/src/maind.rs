@@ -25,169 +25,6 @@ static KEYS: Lazy<identity::Keypair> = Lazy::new(|| identity::Keypair::generate_
 static PEER_ID: Lazy<PeerId> = Lazy::new(|| PeerId::from(KEYS.public()));
 static TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("users"));
 
-slint::slint! {
-    import { Button, VerticalBox, GroupBox, TextEdit, HorizontalBox, LineEdit  } from "std-widgets.slint";
-    
-    export component MainWindow inherits Window {
-        callback add_user_button_hit(string);
-        callback edit_user_button_hit(string);
-
-        width: 1000px;
-        height: 300px;
-
-        GroupBox {
-            title: "Peer2Peer Network - Texting Program";
-            VerticalBox {
-                width: 500px;
-                height: 150px;
-                HorizontalBox {
-                    name_input := LineEdit {
-                        font-size:14px;
-                        height: 30px;
-                        placeholder-text: "Name";
-                        edited => {
-                            add_button.text = "Add User";
-                        }
-                    }
-                    pronouns_input := LineEdit {
-                        font-size: 14px;
-                        height: 30px;
-                        placeholder-text: "Pronouns [Example: she/her]";
-                        edited => {
-                            add_button.text = "Add User";
-                        }
-                    }
-                    phone_input := LineEdit {
-                        font-size: 14px;
-                        height: 30px;
-                        placeholder-text: "Phone Number [XXX-XXX-XXXX]";
-                        edited => {
-                            add_button.text = "Add User";
-                        }
-                    }
-                    add_button := Button {
-                        text: "Add User";
-                        height: 30px;
-                        clicked => {
-                            self.text = "ADDED!"; 
-                            root.add_user_button_hit("create u " + name_input.text + "|" +  pronouns_input.text + "|" + phone_input.text);
-                            name_input.text = "";
-                            pronouns_input.text = "";
-                            phone_input.text = "";
-                        }
-                    }
-                }
-            }
-            VerticalBox {
-                Text {
-                    text: "Contacts List";
-                    color: white;
-                }
-                id_input := LineEdit {
-                    font-size: 14px;
-                    height: 30px;
-                    placeholder-text: "User ID";
-                }
-            }
-        }
-        
-    }
-}
-
-#[tokio::main]
-async fn main() {
-    pretty_env_logger::formatted_builder()
-        .filter_level(log::LevelFilter::Info) // Include info level and higher
-        .init();
-
-
-    info!("Peer Id: {}", PEER_ID.clone());
-    let (response_sender, mut response_rcv) = mpsc::unbounded_channel();
-
-    let auth_keys = Keypair::<X25519Spec>::new()
-        .into_authentic(&KEYS)
-        .expect("can create auth keys");
-
-    let transp = TokioTcpConfig::new()
-        .upgrade(upgrade::Version::V1)
-        .authenticate(NoiseConfig::xx(auth_keys).into_authenticated()) // XX Handshake pattern, IX exists as well and IK - only XX currently provides interop with other libp2p impls
-        .multiplex(mplex::MplexConfig::new())
-        .boxed();
-
-    let mut behaviour = UserBehaviour {
-        floodsub: Floodsub::new(PEER_ID.clone()),
-        mdns: Mdns::new(Default::default())
-            .await
-            .expect("can create mdns"),
-        response_sender,
-    };
-
-    behaviour.floodsub.subscribe(TOPIC.clone());
-
-    let mut swarm = SwarmBuilder::new(transp, behaviour, PEER_ID.clone())
-        .executor(Box::new(|fut| {
-            tokio::spawn(fut);
-        }))
-        .build();
-
-    let mut stdin = tokio::io::BufReader::new(tokio::io::stdin()).lines();
-
-    Swarm::listen_on(
-        &mut swarm,
-        "/ip4/0.0.0.0/tcp/0"
-            .parse()
-            .expect("can get a local socket"),
-    )
-    .expect("swarm can be started");
-
-    let ui = MainWindow::new().unwrap();
-    ui.on_add_user_button_hit(
-        move |to_add| {
-            info!("ADDED USER {}", to_add);
-            handle_create_user(&to_add);
-        }
-            
-    );
-    ui.run().unwrap();
-
-
-    loop {
-        let evt = {
-            tokio::select! {
-                line = stdin.next_line() => Some(EventType::Input(line.expect("can get line").expect("can read line from stdin"))),
-                response = response_rcv.recv() => Some(EventType::Response(response.expect("response exists"))),
-                event = swarm.select_next_some() => {
-                    info!("Unhandled Swarm Event: {:?}", event);
-                    None
-                },
-            }
-        };
-
-        if let Some(event) = evt {
-            match event {
-                EventType::Response(resp) => {
-                    let json = serde_json::to_string(&resp).expect("can jsonify response");
-                    swarm
-                        .behaviour_mut()
-                        .floodsub
-                        .publish(TOPIC.clone(), json.as_bytes());
-                }
-                EventType::Input(line) => match line.as_str() {
-                    "ls p" => handle_list_peers(&mut swarm).await,
-                    cmd if cmd.starts_with("ls u") => handle_list_users(cmd, &mut swarm).await,
-                    cmd if cmd.starts_with("create u") => handle_create_user(cmd).await,
-                    cmd if cmd.starts_with("publish u") => handle_publish_user(cmd).await,
-                    cmd if cmd.starts_with("message u") => handle_message_user(cmd).await,
-                    cmd if cmd.starts_with("edit u") => handle_edit_user(cmd).await,
-                    cmd if cmd.starts_with("help") => handle_help().await,
-                    _ => error!("unknown command"),
-                },
-            }
-        }
-    }
-    
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 struct User {
     id: usize,
@@ -386,7 +223,138 @@ async fn write_local_users(users: &Users) -> Result<()> {
     Ok(())
 }
 
+slint::slint! {
 
+    /*
+    import { VerticalBox } from "std-widgets.slint";
+    export component Demo inherits Window {
+        // exposed to Rust, access via Demo::set_percent() and Demo::get_percent()
+        // Create an alias
+        in-out property percent <=> percent_widget.percent;
+
+        VerticalBox {
+            percent_widget := Text {
+                text: percent_widget.percent;
+                in-out property <string> percent: "??.? %";
+            }
+        }
+    }
+    */
+    import { Button, VerticalBox, GroupBox, TextEdit  } from "std-widgets.slint";
+    export component Example inherits Window {
+        width: 1000px;
+        height: 300px;
+        GroupBox {
+            title: "Peer2Peer Network - Texting Program";
+            VerticalBox {
+                Button {
+                    text: "Add Users";
+                    clicked => { self.text = "CLICKED"; }
+                }
+                Button {
+                    text: "Edit Users";
+                }
+                TextEdit {
+                    font-size: 14px;
+                    width: 100px;
+                    height: 20px;
+                    text: "ID";
+                    enabled: true;
+                }
+            }
+            Text {
+                text: "Hello World";
+                color: green;
+            }
+        }
+        
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    pretty_env_logger::init();
+
+    let demo = Example::new().unwrap();
+    //demo.set_percent("25".into());
+    demo.run().unwrap();
+
+    info!("Peer Id: {}", PEER_ID.clone());
+    let (response_sender, mut response_rcv) = mpsc::unbounded_channel();
+
+    let auth_keys = Keypair::<X25519Spec>::new()
+        .into_authentic(&KEYS)
+        .expect("can create auth keys");
+
+    let transp = TokioTcpConfig::new()
+        .upgrade(upgrade::Version::V1)
+        .authenticate(NoiseConfig::xx(auth_keys).into_authenticated()) // XX Handshake pattern, IX exists as well and IK - only XX currently provides interop with other libp2p impls
+        .multiplex(mplex::MplexConfig::new())
+        .boxed();
+
+    let mut behaviour = UserBehaviour {
+        floodsub: Floodsub::new(PEER_ID.clone()),
+        mdns: Mdns::new(Default::default())
+            .await
+            .expect("can create mdns"),
+        response_sender,
+    };
+
+    behaviour.floodsub.subscribe(TOPIC.clone());
+
+    let mut swarm = SwarmBuilder::new(transp, behaviour, PEER_ID.clone())
+        .executor(Box::new(|fut| {
+            tokio::spawn(fut);
+        }))
+        .build();
+
+    let mut stdin = tokio::io::BufReader::new(tokio::io::stdin()).lines();
+
+    Swarm::listen_on(
+        &mut swarm,
+        "/ip4/0.0.0.0/tcp/0"
+            .parse()
+            .expect("can get a local socket"),
+    )
+    .expect("swarm can be started");
+
+    loop {
+        let evt = {
+            tokio::select! {
+                line = stdin.next_line() => Some(EventType::Input(line.expect("can get line").expect("can read line from stdin"))),
+                response = response_rcv.recv() => Some(EventType::Response(response.expect("response exists"))),
+                event = swarm.select_next_some() => {
+                    info!("Unhandled Swarm Event: {:?}", event);
+                    None
+                },
+            }
+        };
+
+        if let Some(event) = evt {
+            match event {
+                EventType::Response(resp) => {
+                    let json = serde_json::to_string(&resp).expect("can jsonify response");
+                    swarm
+                        .behaviour_mut()
+                        .floodsub
+                        .publish(TOPIC.clone(), json.as_bytes());
+                }
+                EventType::Input(line) => match line.as_str() {
+                    "ls p" => handle_list_peers(&mut swarm).await,
+                    cmd if cmd.starts_with("ls u") => handle_list_users(cmd, &mut swarm).await,
+                    cmd if cmd.starts_with("create u") => handle_create_user(cmd).await,
+                    cmd if cmd.starts_with("publish u") => handle_publish_user(cmd).await,
+                    cmd if cmd.starts_with("message u") => handle_message_user(cmd).await,
+                    cmd if cmd.starts_with("edit u") => handle_edit_user(cmd).await,
+                    cmd if cmd.starts_with("help") => handle_help().await,
+                    _ => error!("unknown command"),
+                },
+            }
+        }
+    }
+
+    
+}
 
 async fn handle_list_peers(swarm: &mut Swarm<UserBehaviour>) {
     info!("Discovered Peers:");
@@ -433,9 +401,7 @@ async fn handle_list_users(cmd: &str, swarm: &mut Swarm<UserBehaviour>) {
     };
 }
 
-
 async fn handle_create_user(cmd: &str) {
-    info!("Added {}", cmd);
     if let Some(rest) = cmd.strip_prefix("create u") {
         let elements: Vec<&str> = rest.split("|").collect();
         if elements.len() < 3 {
@@ -447,7 +413,6 @@ async fn handle_create_user(cmd: &str) {
             if let Err(e) = create_new_user(name, pronouns, phone_number).await {
                 error!("error creating user: {}", e);
             };
-            
         }
     }
 }
