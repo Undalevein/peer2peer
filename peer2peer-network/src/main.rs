@@ -31,8 +31,8 @@ struct User {
     name: String,
     pronouns: String,
     phone_number: String,
-    about_me: Option<String>,
-    messages: Option<Vec<String>>,
+    about_me: String,
+    messages: String,
     messages_length: u32,
     public: bool,
 }
@@ -151,8 +151,8 @@ async fn create_new_user(name: &str, pronouns: &str, phone_number: &str) -> Resu
         name: name.to_owned(),
         pronouns: pronouns.to_owned(),
         phone_number: phone_number.to_owned(),
-        about_me: Some("".to_string()),
-        messages: Some(Vec::new()),
+        about_me: "".to_string().to_owned(),
+        messages: "".to_string().to_owned(),
         messages_length: 0,
         public: false,
     });
@@ -180,12 +180,10 @@ async fn message_user(name: &str, message: &str) -> Result<()> {
     let mut local_users = read_local_users().await?;
     
     for i in 0..local_users.len(){
-        if local_users[i].name == name {
-            if local_users[i].messages != None{
-                local_users[i].messages.clone().expect("REASON").push(message.to_string());
-            } else {
-                local_users[i].messages = vec![message];
-            }
+        if (local_users[i].name).eq(name) {
+            local_users[i].messages += "{";
+            local_users[i].messages += message;
+            local_users[i].messages += "}; ";
             local_users[i].messages_length += 1;
             break;
         }
@@ -204,7 +202,7 @@ async fn edit_user(id: usize, option_change: &str, replacement: &str) -> Result<
             } else if option_change == "phone" {
                 local_users[i].phone_number = replacement.to_string();
             } else if option_change == "about" {
-                local_users[i].about_me = Some(replacement.to_string());
+                local_users[i].about_me = replacement.to_string();
             }
             break;
         }
@@ -225,9 +223,51 @@ async fn write_local_users(users: &Users) -> Result<()> {
     Ok(())
 }
 
+slint::slint! {
+
+    /*
+    import { VerticalBox } from "std-widgets.slint";
+    export component Demo inherits Window {
+        // exposed to Rust, access via Demo::set_percent() and Demo::get_percent()
+        // Create an alias
+        in-out property percent <=> percent_widget.percent;
+
+        VerticalBox {
+            percent_widget := Text {
+                text: percent_widget.percent;
+                in-out property <string> percent: "??.? %";
+            }
+        }
+    }
+    */
+    import { Button, VerticalBox, GroupBox  } from "std-widgets.slint";
+    export component Example inherits Window {
+        width: 200px;
+        height: 100px;
+        GroupBox {
+            title: "A Nice Title";
+            VerticalBox {
+                Button {
+                    text: "Click Me";
+                    clicked => { self.text = "Clicked"; }
+                }
+            }
+            Text {
+                text: "Hello World";
+                color: blue;
+            }
+         }
+        
+    }
+}
+
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
+
+    let demo = Example::new().unwrap();
+    //demo.set_percent("25".into());
+    demo.run().unwrap();
 
     info!("Peer Id: {}", PEER_ID.clone());
     let (response_sender, mut response_rcv) = mpsc::unbounded_channel();
@@ -302,6 +342,8 @@ async fn main() {
             }
         }
     }
+
+    
 }
 
 async fn handle_list_peers(swarm: &mut Swarm<UserBehaviour>) {
