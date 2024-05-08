@@ -263,11 +263,13 @@ slint::slint! {
 
 #[tokio::main]
 async fn main() {
-    pretty_env_logger::init();
+    pretty_env_logger::formatted_builder()
+    .filter_level(log::LevelFilter::Info) // Include info level and higher
+    .init();
 
-    let demo = Example::new().unwrap();
+    //[let demo = Example::new().unwrap();
     //demo.set_percent("25".into());
-    demo.run().unwrap();
+    //demo.run().unwrap();
 
     info!("Peer Id: {}", PEER_ID.clone());
     let (response_sender, mut response_rcv) = mpsc::unbounded_channel();
