@@ -42,6 +42,7 @@ slint::slint! {
     export component MainWindow inherits Window {
         callback add_user_button_hit(string);
         callback edit_user_button_hit(string);
+        callback message_user_button_hit(string);
 
         width: 1000px;
         height: 500px;
@@ -90,6 +91,43 @@ slint::slint! {
                         }
                     }
                 }
+                HorizontalBox {
+                    id_input := LineEdit {
+                        font-size: 14px;
+                        height: 30px;
+                        placeholder-text: "ID";
+                        edited => {
+                            edit_button.text = "Edit User";
+                        }
+                    }
+                    change_input := LineEdit {
+                        font-size: 14px;
+                        height: 30px;
+                        placeholder-text: "[name/phone/about]";
+                        edited => {
+                            edit_button.text = "Edit User";
+                        }
+                    }
+                    replacement_input := LineEdit {
+                        font-size: 14px;
+                        height: 30px;
+                        placeholder-text: "Replacement";
+                        edited => {
+                            edit_button.text = "Edit User";
+                        }
+                    }
+                    edit_button := Button {
+                        text: "Edit User";
+                        height: 30px;
+                        clicked => {
+                            self.text = "EDITED!"; 
+                            root.edit_user_button_hit("edit u " + id_input.text + "|" +  change_input.text + "|" + replacement_input.text);
+                            id_input.text = "";
+                            change_input.text = "";
+                            replacement_input.text = "";
+                        }
+                    }
+                }
                 Text {
                     text: "Messages";
                     font-size: 30px;
@@ -106,6 +144,35 @@ slint::slint! {
                         }
                     }
                     
+                }
+                message_input := TextEdit {
+                    height: 50px;
+                    text: "";
+                    edited => {
+                        send_button.text = "Send";
+                    }
+                }
+                HorizontalBox {
+                    name_to_message_input := LineEdit{
+                        placeholder-text: "Enter Name to Send";
+                        edited => {
+                            send_button.text = "Send";
+                        }
+                    }
+                    send_button := Button {
+                        text: "Send";
+                        height: 30px;
+                        clicked => {
+                            if (message_input.text != "") {
+                                self.text = "SENT!"; 
+                                root.message_user_button_hit("message u " + name_to_message_input.text + "|" + message_input.text);
+                                message_input.text = "";
+                                name_to_message_input.text = "";
+                            }
+                            
+                        }
+                    }
+
                 }
             }
             VerticalBox {
@@ -177,6 +244,18 @@ async fn main() {
         tokio::spawn(async move {
             info!("ADDED USER {}", to_add);
             handle_create_user(&to_add).await;
+        });
+    });
+    ui.on_edit_user_button_hit(move |to_edit| {
+        tokio::spawn(async move {
+            info!("EDITED USER {}", to_edit);
+            handle_edit_user(&to_edit).await;
+        });
+    });
+    ui.on_message_user_button_hit(move |to_message| {
+        tokio::spawn(async move {
+            info!("MESSAGE USER {}", to_message);
+            handle_message_user(&to_message).await;
         });
     });
     ui.run().unwrap();
@@ -417,8 +496,6 @@ async fn write_local_users(users: &Users) -> Result<()> {
     Ok(())
 }
 
-
-
 async fn handle_list_peers(swarm: &mut Swarm<UserBehaviour>) {
     info!("Discovered Peers:");
     let nodes = swarm.behaviour().mdns.discovered_nodes();
@@ -463,7 +540,6 @@ async fn handle_list_users(cmd: &str, swarm: &mut Swarm<UserBehaviour>) {
         }
     };
 }
-
 
 async fn handle_create_user(cmd: &str) {
     info!("Added {}", cmd);
