@@ -15,6 +15,7 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use tokio::{fs, io::AsyncBufReadExt, sync::mpsc};
+use slint::Model;
 
 const STORAGE_FILE_PATH: &str = "./users.json";
 
@@ -38,7 +39,6 @@ slint::slint! {
         in property <int> messages_length;
         in property <bool> public;
 
-        height: 30px;
         background: #005BEE;
         HorizontalBox {
             VerticalBox {
@@ -82,7 +82,7 @@ slint::slint! {
         callback message_user_button_hit(string);
 
         width: 1000px;
-        height: 500px;
+        height: 700px;
 
         in property <[UserData]> user_list: [];
 
@@ -92,7 +92,7 @@ slint::slint! {
             VerticalBox {
                 Text {
                     text: "Add a new user to your contacts.";
-                    height: 20px;
+                    height: 50px;
                 }
                 HorizontalBox {
                     name_input := LineEdit {
@@ -123,11 +123,13 @@ slint::slint! {
                         text: "Add User";
                         height: 30px;
                         clicked => {
-                            self.text = "ADDED!"; 
-                            root.add_user_button_hit("create u " + name_input.text + "|" +  pronouns_input.text + "|" + phone_input.text);
-                            name_input.text = "";
-                            pronouns_input.text = "";
-                            phone_input.text = "";
+                            if (name_input.text != "" && pronouns_input.text != "" && phone_input.text != ""){
+                                self.text = "ADDED!"; 
+                                root.add_user_button_hit("create u " + name_input.text + "|" +  pronouns_input.text + "|" + phone_input.text);
+                                name_input.text = "";
+                                pronouns_input.text = "";
+                                phone_input.text = "";
+                            }
                         }
                     }
                 }
@@ -161,11 +163,13 @@ slint::slint! {
                         text: "Edit User";
                         height: 30px;
                         clicked => {
-                            self.text = "EDITED!"; 
-                            root.edit_user_button_hit("edit u " + id_input.text + "|" +  change_input.text + "|" + replacement_input.text);
-                            id_input.text = "";
-                            change_input.text = "";
-                            replacement_input.text = "";
+                            if (id_input.text != "" && (change_input.text == "name" || change_input.text == "phone" || change_input.text == "about") && replacement_input.text != ""){
+                                self.text = "EDITED!"; 
+                                root.edit_user_button_hit("edit u " + id_input.text + "|" +  change_input.text + "|" + replacement_input.text);
+                                id_input.text = "";
+                                change_input.text = "";
+                                replacement_input.text = "";
+                            }
                         }
                     }
                 }
@@ -205,7 +209,7 @@ slint::slint! {
                         text: "Send";
                         height: 30px;
                         clicked => {
-                            if (message_input.text != "") {
+                            if (message_input.text != "" && name_to_message_input.text != "") {
                                 self.text = "SENT!"; 
                                 root.message_user_button_hit("message u " + name_to_message_input.text + "|" + message_input.text);
                                 message_input.text = "";
@@ -221,14 +225,20 @@ slint::slint! {
                 Text {
                     text: "Contacts List";
                     color: white;
+                    height: 20px;
                 }
                 contacts := ScrollView {
                     width: 300px;
-                    height: 150px;
+                    height: 600px;
                     viewport_width: 300px;
+                    viewport_height: 3000px;
 
                     for user[i] in user_list : UserContact {
+                        x: 0;
                         y: i * 34px;
+
+                        width: 290px;
+                        height: 30px;
                         
                         id: user.id;
                         name: user.name;
@@ -293,18 +303,18 @@ async fn main() {
 
     // Slint User Interface
     let ui = MainWindow::new().unwrap();
+    let mut user_contact_gui: Vec<UserData> = ui.get_user_list().iter().collect();
     tokio::spawn(async move {
-        let mut user_contact_gui: Vec<UserData> = ui.get_user_list().iter().collect();
-        let mut local_users = read_local_users().await?;
+        let local_users = read_local_users().await.expect("REASON");
         for i in 0..local_users.len() {
-            user_contact_gui.push(User {
-                id: local_users[i].id,
-                name: local_users[i].name.to_string(),
-                pronouns: local_users[i].pronouns.to_string(),
-                phone_number: local_users[i].phone_number.to_string(),
-                about_me: local_users[i].about_me.to_string(),
-                messages: local_users[i].messages.to_string(),
-                messages_length: local_users[i].messages_length,
+            user_contact_gui.push(UserData {
+                id: local_users[i].id as i32,
+                name: local_users[i].name.to_string().into(),
+                pronouns: local_users[i].pronouns.to_string().into(),
+                phone_number: local_users[i].phone_number.to_string().into(),
+                about_me: local_users[i].about_me.to_string().into(),
+                messages: local_users[i].messages.to_string().into(),
+                messages_length: local_users[i].messages_length as i32,
                 public: local_users[i].public,
             });
         }
