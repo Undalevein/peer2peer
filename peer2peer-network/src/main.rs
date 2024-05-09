@@ -27,8 +27,45 @@ static TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("users"));
 
 slint::slint! {
     import { Button, VerticalBox, GroupBox, TextEdit, HorizontalBox, LineEdit , ScrollView  } from "std-widgets.slint";
-    
-    struct UserGUI  {
+
+    component UserContact inherits Rectangle {
+        in property <int> id;
+        in property <string> name;
+        in property <string> pronouns;
+        in property <string> phone_number;
+        in property <string> about_me;
+        in property <string> messages;
+        in property <int> messages_length;
+        in property <bool> public;
+
+        height: 30px;
+        background: #005BEE;
+        HorizontalBox {
+            VerticalBox {
+                alignment: start;
+                Text {
+                    text: name;
+                }
+                Text {
+                    text: pronouns;
+                }
+                Text {
+                    text: phone_number;
+                }
+                Text {
+                    text: "User ID: " + id;
+                }
+            }
+            VerticalBox {
+                Text {
+                    text: about_me;
+                }
+            }
+        }
+
+    }
+
+    struct UserData {
         id: int,
         name: string,
         pronouns: string,
@@ -47,8 +84,11 @@ slint::slint! {
         width: 1000px;
         height: 500px;
 
+        in property <[UserData]> user_list: [];
+
         GroupBox {
             title: "Peer2Peer Network - Texting Program";
+            // Add someone to Contact List
             VerticalBox {
                 Text {
                     text: "Add a new user to your contacts.";
@@ -91,6 +131,7 @@ slint::slint! {
                         }
                     }
                 }
+                // Edit someone in Contact List
                 HorizontalBox {
                     id_input := LineEdit {
                         font-size: 14px;
@@ -128,6 +169,7 @@ slint::slint! {
                         }
                     }
                 }
+                // Message User
                 Text {
                     text: "Messages";
                     font-size: 30px;
@@ -169,12 +211,12 @@ slint::slint! {
                                 message_input.text = "";
                                 name_to_message_input.text = "";
                             }
-                            
                         }
                     }
 
                 }
             }
+            // Contact List
             VerticalBox {
                 Text {
                     text: "Contacts List";
@@ -184,7 +226,19 @@ slint::slint! {
                     width: 300px;
                     height: 150px;
                     viewport_width: 300px;
-                    viewport_height: 400px;
+
+                    for user[i] in user_list : UserContact {
+                        y: i * 34px;
+                        
+                        id: user.id;
+                        name: user.name;
+                        pronouns: user.pronouns;
+                        phone_number: user.phone_number;
+                        about_me: user.about_me;
+                        messages: user.messages;
+                        messages_length: user.messages_length;
+                        public: user.public;
+                    }
                 }
             }
         }
@@ -197,7 +251,6 @@ async fn main() {
     pretty_env_logger::formatted_builder()
         .filter_level(log::LevelFilter::Info) // Include info level and higher
         .init();
-
 
     info!("Peer Id: {}", PEER_ID.clone());
     let (response_sender, mut response_rcv) = mpsc::unbounded_channel();
@@ -238,8 +291,24 @@ async fn main() {
     )
     .expect("swarm can be started");
 
-
+    // Slint User Interface
     let ui = MainWindow::new().unwrap();
+    tokio::spawn(async move {
+        let mut user_contact_gui: Vec<UserData> = ui.get_user_list().iter().collect();
+        let mut local_users = read_local_users().await?;
+        for i in 0..local_users.len() {
+            user_contact_gui.push(User {
+                id: local_users[i].id,
+                name: local_users[i].name.to_string(),
+                pronouns: local_users[i].pronouns.to_string(),
+                phone_number: local_users[i].phone_number.to_string(),
+                about_me: local_users[i].about_me.to_string(),
+                messages: local_users[i].messages.to_string(),
+                messages_length: local_users[i].messages_length,
+                public: local_users[i].public,
+            });
+        }
+    });
     ui.on_add_user_button_hit(move |to_add| { 
         tokio::spawn(async move {
             info!("ADDED USER {}", to_add);
