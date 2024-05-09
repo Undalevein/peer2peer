@@ -15,7 +15,6 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use tokio::{fs, io::AsyncBufReadExt, sync::mpsc};
-use slint::Model;
 
 const STORAGE_FILE_PATH: &str = "./users.json";
 
@@ -175,9 +174,10 @@ async fn main() {
 
     let ui = MainWindow::new().unwrap();
     ui.on_add_user_button_hit(move |to_add| { 
-        info!("ADDED USER {}", to_add);
-        handle_create_user(&to_add).await;
-        
+        tokio::spawn(async move {
+            info!("ADDED USER {}", to_add);
+            handle_create_user(&to_add).await;
+        });
     });
     ui.run().unwrap();
 
