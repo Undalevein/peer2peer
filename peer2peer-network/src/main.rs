@@ -15,6 +15,7 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use tokio::{fs, io::AsyncBufReadExt, sync::mpsc};
+use slint::Model;
 
 const STORAGE_FILE_PATH: &str = "./users.json";
 
@@ -26,23 +27,36 @@ static PEER_ID: Lazy<PeerId> = Lazy::new(|| PeerId::from(KEYS.public()));
 static TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("users"));
 
 slint::slint! {
-    import { Button, VerticalBox, GroupBox, TextEdit, HorizontalBox, LineEdit  } from "std-widgets.slint";
+    import { Button, VerticalBox, GroupBox, TextEdit, HorizontalBox, LineEdit , ScrollView  } from "std-widgets.slint";
     
+    struct UserGUI  {
+        id: int,
+        name: string,
+        pronouns: string,
+        phone_number: string,
+        about_me: string,
+        messages: string,
+        messages_length: int,
+        public: bool,
+    }
+
     export component MainWindow inherits Window {
         callback add_user_button_hit(string);
         callback edit_user_button_hit(string);
 
         width: 1000px;
-        height: 300px;
+        height: 500px;
 
         GroupBox {
             title: "Peer2Peer Network - Texting Program";
             VerticalBox {
-                width: 500px;
-                height: 150px;
+                Text {
+                    text: "Add a new user to your contacts.";
+                    height: 20px;
+                }
                 HorizontalBox {
                     name_input := LineEdit {
-                        font-size:14px;
+                        font-size: 14px;
                         height: 30px;
                         placeholder-text: "Name";
                         edited => {
@@ -52,7 +66,7 @@ slint::slint! {
                     pronouns_input := LineEdit {
                         font-size: 14px;
                         height: 30px;
-                        placeholder-text: "Pronouns [Example: she/her]";
+                        placeholder-text: "Pronouns";
                         edited => {
                             add_button.text = "Add User";
                         }
@@ -60,7 +74,7 @@ slint::slint! {
                     phone_input := LineEdit {
                         font-size: 14px;
                         height: 30px;
-                        placeholder-text: "Phone Number [XXX-XXX-XXXX]";
+                        placeholder-text: "Phone Number";
                         edited => {
                             add_button.text = "Add User";
                         }
@@ -77,16 +91,34 @@ slint::slint! {
                         }
                     }
                 }
+                Text {
+                    text: "Messages";
+                    font-size: 30px;
+                }
+                ScrollView {
+                    height: 200px;
+                    viewport_height: 100px;
+    
+                    VerticalLayout{
+                        alignment: start;
+                        message := Text {
+                            font-size: 14px;
+                            text: "[Damian]: Hello!";
+                        }
+                    }
+                    
+                }
             }
             VerticalBox {
                 Text {
                     text: "Contacts List";
                     color: white;
                 }
-                id_input := LineEdit {
-                    font-size: 14px;
-                    height: 30px;
-                    placeholder-text: "User ID";
+                contacts := ScrollView {
+                    width: 300px;
+                    height: 150px;
+                    viewport_width: 300px;
+                    viewport_height: 400px;
                 }
             }
         }
@@ -140,14 +172,13 @@ async fn main() {
     )
     .expect("swarm can be started");
 
+
     let ui = MainWindow::new().unwrap();
-    ui.on_add_user_button_hit(
-        move |to_add| {
-            info!("ADDED USER {}", to_add);
-            handle_create_user(&to_add);
-        }
-            
-    );
+    ui.on_add_user_button_hit(move |to_add| { 
+        info!("ADDED USER {}", to_add);
+        handle_create_user(&to_add).await;
+        
+    });
     ui.run().unwrap();
 
 
