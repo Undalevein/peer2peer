@@ -337,6 +337,9 @@ async fn main() {
             handle_message_user(&to_message).await;
         });
     });
+    //  let user_contact_model = std::rc::Rc::new(slint::VecModel::from(user_contact_gui));
+    //  ui.set_user_list(user_contact_model.into());
+
     ui.run().unwrap();
 
 
